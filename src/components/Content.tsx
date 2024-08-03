@@ -15,12 +15,17 @@ import ClearIcon from '@mui/icons-material/Clear';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import axios from 'axios';
 
+type RowProps = {
+  phoneNumber: string,
+  connected: boolean,
+  isAHuman: boolean,
+}
 const createData = (
     phoneNumber: string,
     connected: boolean,
     isAHuman: boolean,
   ) => {
-    return { phoneNumber, connected, isAHuman };
+    return { phoneNumber, connected, isAHuman } as RowProps;
   }
 
 type DenseTableProps = {
@@ -28,7 +33,7 @@ type DenseTableProps = {
 }
 const DenseTable: FC<DenseTableProps>  = (props) => {
   const {phoneNumbers} = props;
-  const [rows, setRows] = useState<any[]>([]);
+  const [rows, setRows] = useState<RowProps[]>([]);
 
   useEffect(() => {
     setRows(phoneNumbers.map(number => createData(number, false, false)));
