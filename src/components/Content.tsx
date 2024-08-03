@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { Button, CircularProgress, Paper, TextField }  from '@mui/material';
 import CallIcon from '@mui/icons-material/Call';
 import CallEndIcon from '@mui/icons-material/CallEnd';
@@ -23,15 +23,48 @@ const createData = (
     return { phoneNumber, connected, isAHuman };
   }
 
-const DenseTable = ({ phoneNumbers }: { phoneNumbers: string[] }) => {
-  // const rowst = [
-  //   createData('+12025550101', true, true),
-  //   createData('+13035550123', true, false),
-  //   createData('+14155550145', true, false),
-  //   createData('+12125550187', false, false),
-  //   createData('+13125550199', false, true),
-  // ];
-  const rows = phoneNumbers.map(number => createData(number, true, false));
+type DenseTableProps = {
+  phoneNumbers: string[]
+}
+const DenseTable: FC<DenseTableProps>  = (props) => {
+  const {phoneNumbers} = props;
+  const [rows, setRows] = useState<any[]>([]);
+
+  useEffect(() => {
+    setRows(phoneNumbers.map(number => createData(number, false, false)));
+  }, [phoneNumbers]);
+
+  useEffect(() => {
+    const ws = new WebSocket('ws://localhost:3001');
+    
+    ws.onopen = () => {
+        console.log('Connected to WebSocket');
+    };
+
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+
+      if (message.event === 'call-status') {
+        setRows(prevRows => prevRows.map(row => {
+          if (row.phoneNumber === message.number) {
+            return { ...row, connected: message.status === 'in-progress', isAHuman: message.answeredBy === 'human' };
+          }
+          return row;
+        }));
+      }
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket error', error);
+    };
+
+    ws.onclose = () => {
+        console.log('WebSocket connection closed');
+    };
+
+    return () => ws.close();
+  }, []);
+
     return (
       <TableContainer component={Paper}>
         <Table sx={{ minWidth: 650 }} size="small" color="success" >
@@ -52,12 +85,14 @@ const DenseTable = ({ phoneNumbers }: { phoneNumbers: string[] }) => {
                 <TableCell component="th" scope="row">
                   {row.phoneNumber}
                 </TableCell>
-                <TableCell align="center">{row.connected ? <DoneIcon color="success" /> : <ClearIcon color="error" />}</TableCell>
+                <TableCell align="center">{row.connected  ? <DoneIcon color="success" /> : <ClearIcon color="error" />}</TableCell>
                 <TableCell align="center">{row.isAHuman ? <DoneIcon color="success" /> : <ClearIcon color="error" />}</TableCell>
                 <TableCell align="right">
-                <Button variant="contained" color="error" endIcon={<ExitToAppIcon />}>
+                {row.connected && (
+                  <Button variant="contained" color="error" endIcon={<ExitToAppIcon />}>
                     Kick
-                </Button>
+                  </Button>
+                )}
                 </TableCell>
               </TableRow>
             ))}
@@ -66,15 +101,17 @@ const DenseTable = ({ phoneNumbers }: { phoneNumbers: string[] }) => {
       </TableContainer>
     );
   }
-const Content = () => {
+
+type ContentProps = {}
+  
+const Content: FC<ContentProps> = () => {
     const [phoneNumbers, setPhoneNumbers] = useState<string[]>([]);
     const [result, setResult] = useState<string>('');
 
     const fetchPhoneNumbers = async () => {
       try {
-          const response = await axios.get('http://localhost:3001/generate-numbers');
+          const response = await axios.get('http://localhost:3001/get-numbers');
           setPhoneNumbers(response.data);
-          console.log('DEBUG: phoneNumbers:', response.data)
       } catch (error) {
           console.error('Error fetching phone numbers:', error);
       }
@@ -128,7 +165,7 @@ const Content = () => {
             )}
         </Stack>
         {result === 'Calls initiated' && (
-          <DenseTable phoneNumbers={phoneNumbers || []} />
+          <DenseTable phoneNumbers={phoneNumbers} />
         )}
     </Paper>
   );
