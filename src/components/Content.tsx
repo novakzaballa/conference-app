@@ -201,9 +201,9 @@ const Content: FC<ContentProps> = () => {
             </Button>
           )}
         </Stack>
-        {/* {connectionStatus === 'ringing' && ( */}
+        {connectionStatus === 'ringing' && (
           <DenseTable phoneNumbers={phoneNumbers} />
-        {/* )} */}
+        )}
     </Paper>
   );
 }
