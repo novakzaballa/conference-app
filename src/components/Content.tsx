@@ -97,8 +97,6 @@ const DenseTable: FC<DenseTableProps>  = (props) => {
                 </TableCell>
                 <TableCell align='center'>{row.connected === 'calling' ? <CircularProgress/> : row.connected === 'in-progress' ? <DoneIcon color='success' /> : <ClearIcon color='error' />}</TableCell>
                 <TableCell align='center'>{row.isAHuman ? <DoneIcon color='success' /> : <ClearIcon color='error' />}</TableCell>
-                <TableCell align='right'>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -203,9 +201,9 @@ const Content: FC<ContentProps> = () => {
             </Button>
           )}
         </Stack>
-        {connectionStatus === 'ringing' && (
+        {/* {connectionStatus === 'ringing' && ( */}
           <DenseTable phoneNumbers={phoneNumbers} />
-        )}
+        {/* )} */}
     </Paper>
   );
 }
