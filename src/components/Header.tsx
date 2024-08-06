@@ -6,21 +6,21 @@ import Typography from '@mui/material/Typography';
 
 interface HeaderProps {}
 
-export default function Header(props: HeaderProps) {
+const Header: React.FC<HeaderProps> = () => {
   return (
     <React.Fragment>
       <AppBar
-        component="div"
-        color="primary"
-        position="static"
+        component='div'
+        color='primary'
+        position='static'
         elevation={0}
         sx={{ zIndex: 0 }}
       >
         <Toolbar/>
         <Toolbar>
-          <Grid container alignItems="center" spacing={1}>
+          <Grid container alignItems='center' spacing={1}>
             <Grid item xs>
-              <Typography color="inherit" variant="h5" component="h1">
+              <Typography color='inherit' variant='h5' component='h1'>
                 Telephony Conference App
               </Typography>
             </Grid>
@@ -30,3 +30,5 @@ export default function Header(props: HeaderProps) {
     </React.Fragment>
   );
 }
+
+export default Header

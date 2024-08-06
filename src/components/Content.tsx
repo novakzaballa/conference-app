@@ -14,18 +14,23 @@ import DoneIcon from '@mui/icons-material/Done';
 import ClearIcon from '@mui/icons-material/Clear';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import axios from 'axios';
+import { Call, Device } from '@twilio/voice-sdk';
+
+const BASE_API_URL = 'http://localhost:3000/api/v1';
 
 type RowProps = {
   phoneNumber: string,
-  connected: boolean,
+  connected: string,
   isAHuman: boolean,
+  callSid?: string,
 }
 const createData = (
     phoneNumber: string,
-    connected: boolean,
+    connected: string,
     isAHuman: boolean,
+    callSid?: string
   ) => {
-    return { phoneNumber, connected, isAHuman } as RowProps;
+    return { phoneNumber, connected, isAHuman, callSid } as RowProps;
   }
 
 type DenseTableProps = {
@@ -36,11 +41,11 @@ const DenseTable: FC<DenseTableProps>  = (props) => {
   const [rows, setRows] = useState<RowProps[]>([]);
 
   useEffect(() => {
-    setRows(phoneNumbers.map(number => createData(number, false, false)));
+    setRows(phoneNumbers.map(number => createData(number, 'calling', false)));
   }, [phoneNumbers]);
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:3001');
+    const ws = new WebSocket('ws://localhost:3000');
     
     ws.onopen = () => {
         console.log('Connected to WebSocket');
@@ -52,7 +57,7 @@ const DenseTable: FC<DenseTableProps>  = (props) => {
       if (message.event === 'call-status') {
         setRows(prevRows => prevRows.map(row => {
           if (row.phoneNumber === message.number) {
-            return { ...row, connected: message.status === 'in-progress', isAHuman: message.answeredBy === 'human' };
+            return { ...row, connected: message.status, isAHuman: message.answeredBy === 'human', callSid: message.callSid };
           }
           return row;
         }));
@@ -70,15 +75,15 @@ const DenseTable: FC<DenseTableProps>  = (props) => {
     return () => ws.close();
   }, []);
 
+
     return (
       <TableContainer component={Paper}>
-        <Table sx={{ minWidth: 650 }} size="small" color="success" >
-          <TableHead style={{ background: "#CED4D6 " }}>
+        <Table sx={{ minWidth: 650 }} size='small' color='success' >
+          <TableHead style={{ background: '#CED4D6 ' }}>
             <TableRow>
               <TableCell>Phone number</TableCell>
-              <TableCell align="center">Connected</TableCell>
-              <TableCell align="center">Human</TableCell>
-              <TableCell align="right"><p style={{marginRight:'30px'}}>Kick</p></TableCell>
+              <TableCell align='center'>Connected</TableCell>
+              <TableCell align='center'>Human</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -87,17 +92,12 @@ const DenseTable: FC<DenseTableProps>  = (props) => {
                 key={row.phoneNumber}
                 sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
               >
-                <TableCell component="th" scope="row">
+                <TableCell component='th' scope='row'>
                   {row.phoneNumber}
                 </TableCell>
-                <TableCell align="center">{row.connected  ? <DoneIcon color="success" /> : <ClearIcon color="error" />}</TableCell>
-                <TableCell align="center">{row.isAHuman ? <DoneIcon color="success" /> : <ClearIcon color="error" />}</TableCell>
-                <TableCell align="right">
-                {row.connected && (
-                  <Button variant="contained" color="error" endIcon={<ExitToAppIcon />}>
-                    Kick
-                  </Button>
-                )}
+                <TableCell align='center'>{row.connected === 'calling' ? <CircularProgress/> : row.connected === 'in-progress' ? <DoneIcon color='success' /> : <ClearIcon color='error' />}</TableCell>
+                <TableCell align='center'>{row.isAHuman ? <DoneIcon color='success' /> : <ClearIcon color='error' />}</TableCell>
+                <TableCell align='right'>
                 </TableCell>
               </TableRow>
             ))}
@@ -111,11 +111,45 @@ type ContentProps = {}
   
 const Content: FC<ContentProps> = () => {
     const [phoneNumbers, setPhoneNumbers] = useState<string[]>([]);
-    const [result, setResult] = useState<string>('');
+    const [device, setDevice] = useState<Device>();
+    const [call, setCall] = useState<Call>();
+
+    const [connectionStatus, setConnectionStatus] = useState('Not connected');
+    const [activeConnection, setActiveConnection] = useState(null);
+
+    const setupDevice = async () => {
+      const response = await axios.post(BASE_API_URL + '/token');
+      const token = response.data.token;
+
+      const twilioDevice = new Device(token, {
+        logLevel:1,
+        codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
+      });
+
+      initiateConference(twilioDevice);
+      setDevice(twilioDevice);
+
+      twilioDevice.on('registered', () => console.log('Device registered'));
+      twilioDevice.on('error', (error: Error) => console.error('Device error:', error));
+
+      twilioDevice.on('connect', (connection: any) => {
+        setConnectionStatus('Connected');
+        setActiveConnection(connection);
+        console.log('Connected to conference');
+      });
+
+      twilioDevice.on('disconnect', (connection: any) => {
+        if (activeConnection === connection) {
+          setConnectionStatus('Disconnected');
+          setActiveConnection(null);
+        }
+        console.log('Disconnected from conference');
+      });
+    };
 
     const fetchPhoneNumbers = async () => {
       try {
-          const response = await axios.get('http://localhost:3001/get-numbers');
+          const response = await axios.get(BASE_API_URL + '/get-numbers');
           setPhoneNumbers(response.data);
       } catch (error) {
           console.error('Error fetching phone numbers:', error);
@@ -127,49 +161,49 @@ const Content: FC<ContentProps> = () => {
     }, []);
     const handleStartConference = async () => {
         try {
-            const response = await axios.post('http://localhost:3001/start-conference', { phoneNumbers });
-            setResult(response.data.message);
+          if (!device) {
+            await setupDevice();
+          }
+          initiateConference(device!);
+
         } catch (error) {
-            setResult('Failed to start conference');
+          console.error('Error starting conference:', error);
         }
     };
+
+    const initiateConference = async (device: Device) => {
+      const conferenceID = 'conference-' + Math.random().toString(36).substring(7);
+      const call = await device?.connect({params: {conferenceID}});
+      call?.on('ringing', () => setConnectionStatus('ringing'));
+      setCall(call);
+    }
     
-    const handleFinishConference = async () => {
-        try {
-            const response = await axios.post('http://localhost:3001/end-conference', { phoneNumbers });
-            setResult(response.data.message);
-        } catch (error) {
-            setResult('Failed to start conference');
-        }
-    };
+    const hangupConference = () => {
+      call?.disconnect();
+      setConnectionStatus('disconnected');
+      console.log('Hanging up incoming call');
+    }
+  
   return (
     <Paper sx={{ maxWidth: 1000, margin: 'auto', overflow: 'hidden' }}>
-        <Stack spacing={{ xs: 1, sm: 2 }} direction="row" useFlexGap flexWrap="wrap" margin={1.5}>
-        <TextField
-            id="outlined-basic"
-            label="Outlined"
-            variant="outlined"
-            // onChange={(e) => setPhoneNumbers(e.target.value.split(','))}
-            placeholder="Enter phone numbers separated by commas"
-            type='number'
-            />
-            {result === 'Calls initiated' && (
-              <Button variant="contained" endIcon={<PersonAddIcon />}>
-                Add Participant
-              </Button>
-            )}
-            {result !== 'Calls initiated' && (
-              <Button variant="contained" color="success" endIcon={<CallIcon />} onClick={handleStartConference}>
-                Start conference
-              </Button>
-            )}
-            {result === 'Calls initiated' && (
-              <Button variant="contained" color="error" endIcon={<CallEndIcon />} onClick={handleFinishConference}>
-                Finish
-              </Button>
-            )}
+        <Stack spacing={{ xs: 1, sm: 2 }} direction='row' useFlexGap flexWrap='wrap' margin={1.5}>
+          {connectionStatus === 'Calls initiated' && (
+            <Button variant='contained' endIcon={<PersonAddIcon />}>
+              Add Participant
+            </Button>
+          )}
+          {connectionStatus !== 'ringing' && (
+            <Button variant='contained' color='success' endIcon={<CallIcon />} onClick={handleStartConference}>
+              Start calling
+            </Button>
+          )}
+          {connectionStatus === 'ringing' && (
+            <Button variant='contained' color='error' endIcon={<CallEndIcon />} onClick={hangupConference}>
+              Finish
+            </Button>
+          )}
         </Stack>
-        {result === 'Calls initiated' && (
+        {connectionStatus === 'ringing' && (
           <DenseTable phoneNumbers={phoneNumbers} />
         )}
     </Paper>
